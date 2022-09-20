@@ -1,0 +1,34 @@
+You should start by building the singularity container (Linux only):
+
+$ sudo singularity build container.img singularity 
+
+And then you should enter the container:
+
+$ singularity exec --nv container.img bash 
+
+And then you should have an interactive shell in which to run the commands!
+
+First train via imitation learning:
+
+python driver.py imitation --maxShapes 13 # this will give you 3D
+python driver.py imitation --maxShapes 13 --2d # this will give you 2D
+
+After running for a while, you can then resume with reinforcement learning, and you will need to provide the path of the checkpoint file that was created by the above command(s):
+
+python driver.py critic --resume <CHECKPOINT_PATH_GOES_HERE> --maxShapes 13 # this will give you 3-D
+python driver.py critic --resume <CHECKPOINT_PATH_GOES_HERE> --maxShapes 13 --2d # this will give you 2d
+
+After you run that for a while (a couple days should suffice), you can then run the testing code:
+
+python driver.py test --checkpoint <CHECKPOINT_PATH_GOES_HERE> --timeout 120 --solvers fs SMC bm bmv # this will give you 3d
+python driver.py test --checkpoint <CHECKPOINT_PATH_GOES_HERE> --timeout 120 --solvers fs SMC bm bmv --2d # this will give you 2d
+
+But in the above you need to include the path which was output by the reinforcement learning phase of training. In the above we are asking it to evaluate 4 different inference strategies:
+ - fs: forward sample, a.k.a. policy rollouts
+ - SMC: sequential Monte Carlo, a.k.a. our preferred model
+ - bm: beam search decoding using the policy
+ - bmv: beam search decoding using the policy+value
+
+In order to create the IOU-over-time graphs use graphs.py and point it at the testResults.pickle final output by the above testing code invocations:
+
+python graphs.py  -e <PATH_WHERE_THE_IMAGE_OF_THE_GRAPH_WILL_BE_EXPORTED> -t <MAXIMUM_TIMEOUT_MEASURED_IN_SECONDS_SUCH_AS_120> -n <TITLE_OF_GRAPH> <LIST_OF_PATHS_TO_testResults.pickle_FILES>
