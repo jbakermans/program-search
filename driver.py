@@ -1,6 +1,4 @@
-from CAD import *
 from tetris import *
-from tool_set import *
 import matplotlib.pyplot as plot
 
 from SMC import instrumentSMC
@@ -11,17 +9,22 @@ import random
 
 from datetime import datetime
 
-
-
-if __name__ == "__main__":
+def get_arguments(mode=None):
+    # Bit hacky but I want to be able to run this from a interactive python terminal,
+    # so instead of just command line arguments I want to create arguments in function
     import argparse
     parser = argparse.ArgumentParser(description = "")
-    parser.add_argument("mode", choices=["imitation","exit","test","demo","makeData","heatMap",
-                                         "critic","render"])
+    # If mode is not provided: get it from input
+    if mode is None:
+        parser.add_argument("mode", choices=["imitation","exit","test","demo","makeData","heatMap",
+                                             "critic","render"])
+    else:
+        parser.add_argument("--mode", default=mode)
+    # All other arguments are just defaults        
     parser.add_argument("--checkpoint", default=None)
-    parser.add_argument("--maxShapes", default=20,
+    parser.add_argument("--maxShapes", default=7,
                             type=int)
-    parser.add_argument("--2d", default=False, action='store_true', dest='td')
+    parser.add_argument("--2d", default=True, action='store_true', dest='td')
     parser.add_argument("--viewpoints", default=False, action='store_true', dest='viewpoints')
     parser.add_argument("--trainTime", default=None, type=float,
                         help="Time in hours to train the network")
@@ -46,13 +49,14 @@ if __name__ == "__main__":
     parser.add_argument("--noExecution", default=False, action='store_true')
     parser.add_argument("--rotate", default=False, action='store_true')
     parser.add_argument("--solvers",default=["fs"],nargs='+')
-
-    timestamp = datetime.now().strftime('%FT%T')
-    print(f"Invoking @ {timestamp} as:\n\tpython {' '.join(sys.argv)}")
-    
+    # Parse to get arguments
     arguments = parser.parse_args()
-    arguments.translate = not arguments.noTranslate
+    arguments.translate = not arguments.noTranslate    
+    # Return arguments
+    return arguments
 
+def run(arguments):
+    timestamp = datetime.now().strftime('%FT%T')
     if arguments.render:
         for path in arguments.render:
             if path.endswith(".pickle") or path.endswith(".p"):
@@ -60,55 +64,38 @@ if __name__ == "__main__":
                     program = pickle.load(handle)
                     print(f"LOADED {path}")
                     print(ProgramGraph.fromRoot(program).prettyPrint(True))
-                    program.scad("/tmp/render.scad")
-            elif path.endswith(".scad"):
-                os.system(f"cp {path} /tmp/render.scad")
-            else: assert False, f"unknown file extension {path}"
-            
-
-            os.chdir("render_scad_tool")
-            os.system("python render_scad.py /tmp/render.scad")
-            os.chdir("..")
-            os.system(f"cp render_scad_tool/example.png {path}_pretty.png")
-        sys.exit(0)
-
+                    plotShape(program, "tmp/render.png")
+            if path.endswith(".txt"):
+                    programs = loadShapes(path)
+                    for i, program in enumerate(programs):
+                        plotShape(program, f"tmp/render_{str(i)}.png")
+        import sys
+        sys.exit(0)                        
 
     if arguments.mode == "demo":
         os.system("mkdir demo")
-        if arguments.td:
-            rs = lambda : randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes, nudge=arguments.nudge, translate=arguments.translate)
-        else:
-            rs = lambda : random3D(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes,
-                                   rotate=arguments.rotate)
+        rs = lambda : randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
+        
         startTime = time.time()
         ns = 50
         for _ in range(ns):
             rs().execute()
         print(f"{ns/(time.time() - startTime)} (renders + samples)/second")
         if arguments.tools:
-            if not arguments.td: rs = make3DTools()
-            else: rs = make2DTools()
+            print('Tools not implemented')
         else:
             rs = [rs() for _ in range(10) ]
             
         for n,s in enumerate(rs):
-            if arguments.td:
-                s.export(f"demo/CAD_{n}_hr.png",256)
-                s.exportDecomposition(f"demo/CAD_{n}_trace.png",256)
-                plot.imshow(s.execute())
-                plot.savefig(f"demo/CAD_{n}_lr.png")
-                print(s)
-            else:
-                s.show(export=f"demo/CAD_{n}_3d.png")
-                print(s)
-                s.scad(f"demo/CAD_{n}_model.png")
+            plotShape(s, f"demo/tetris_{n}_hr.png")
+            print(s)
 
         import sys
         sys.exit(0)
         
             
     if arguments.checkpoint is None:
-        arguments.checkpoint = f"checkpoints/{'2d' if arguments.td else '3d'}_{arguments.mode}"
+        arguments.checkpoint = f"checkpoints/tetris_{arguments.mode}"
         if arguments.noExecution:
             arguments.checkpoint += "_noExecution"
         if arguments.viewpoints:
@@ -121,28 +108,10 @@ if __name__ == "__main__":
         arguments.checkpoint += f"_{timestamp}.pickle"
         print(f"Setting checkpointpath to {arguments.checkpoint}")
     if arguments.mode == "imitation":
-        if not arguments.td:
-            dsl = dsl_3d
-            if not arguments.viewpoints:
-                oe = CNN_3d(channels=2, channelsAsArguments=True,
-                            inputImageDimension=RESOLUTION,
-                            filterSizes=[3,3,3],
-                            poolSizes=[4,1,1],
-                            numberOfFilters=[32,32,16])
-                se = CNN_3d(channels=1, inputImageDimension=RESOLUTION,
-                            filterSizes=[3,3,3],
-                            poolSizes=[4,1,1],
-                            numberOfFilters=[32,32,16])
-            else:
-                oe = MultiviewObject()
-                se = MultiviewSpec()
-            training = lambda : random3D(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes,
-                                         rotate=arguments.rotate)
-        else:
-            dsl = dsl_2d
-            oe = ObjectEncoder()
-            se = SpecEncoder()
-            training = lambda : randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
+        dsl = tDSL
+        oe = ObjectEncoder()
+        se = SpecEncoder()
+        training = lambda : randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
 
         print(f"CNN output dimensionalitys are {oe.outputDimensionality} & {se.outputDimensionality}")
 
@@ -172,15 +141,12 @@ if __name__ == "__main__":
             return False
         if arguments.td:
             training = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
-        else:
-            training = lambda: random3D(maxShapes=arguments.maxShapes,minShapes=arguments.maxShapes,
-                                        rotate=arguments.rotate)
         critic.train(arguments.checkpoint,
                      training,
                      R)
         
     elif arguments.mode == "heatMap":
-        learnHeatMap()
+        print('Heatmap not implemented')
     elif arguments.mode == "makeData":
         makeTrainingData()
     elif arguments.mode == "exit":
@@ -188,25 +154,17 @@ if __name__ == "__main__":
             m = pickle.load(handle)
         searchAlgorithm = BeamSearch(m, maximumLength=arguments.maxShapes*3 + 1)
         loss = lambda spec, program: 1-max( o.IoU(spec) for o in program.objects() ) if len(program) > 0 else 1.
-        searchAlgorithm.train(getTrainingData('CSG_data.p'),
+        searchAlgorithm.train(getTrainingData('data/CSG_data.p'),
                               loss=loss,
                               policyOracle=lambda spec: spec.toTrace(),
                               timeout=1,
                               exitIterations=-1)
     elif arguments.mode == "test":
         m = load_checkpoint(arguments.checkpoint)
-        if arguments.td:
-            if arguments.tools:
-                dataGenerator = make2DTools()
-            else:
-                dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
+        if arguments.tools:
+            print('Tools not implemented')
         else:
-            if arguments.tools:
-                dataGenerator = make3DTools()
-            else:
-                dataGenerator = lambda : random3D(maxShapes=arguments.maxShapes,
-                                                  minShapes=arguments.maxShapes,
-                                                  rotate=arguments.rotate)
+            dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
         if arguments.tools:
             suffix = "tools"
         else:
@@ -217,4 +175,12 @@ if __name__ == "__main__":
                 solvers=arguments.solvers,
                 timestamp=timestamp,
                 solverSeed=arguments.seed,
-                n_test=arguments.ntest)
+                n_test=arguments.ntest)    
+
+if __name__ == "__main__":
+    arguments = get_arguments()  
+    
+    
+    #print(f"Invoking @ {timestamp} as:\n\tpython {' '.join(sys.argv)}")
+
+    run(arguments)
