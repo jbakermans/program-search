@@ -6,26 +6,31 @@ Created on Tue Sep 20 10:49:04 2022
 @author: jbakermans
 """
 
+import os
 import pickle
 import numpy as np
+import traceback
+import sys
+import os
+import time
+import random
+import time
+import random
+import matplotlib.pyplot as plt
+from scipy.signal import convolve2d
 
 from API import *
-
+from a2c import *
 from randomSolver import *
 from pointerNetwork import *
 from programGraph import *
 from SMC import *
 from ForwardSample import *
 from MCTS import MCTS
+from beamSearch import *
 from CNN import *
 
 import dsl
-
-import time
-import random
-import matplotlib.pyplot as plt
-from scipy.signal import convolve2d
-
 
 RESOLUTION = 16
 
@@ -539,7 +544,7 @@ def makeTrainingData():
             print()
             lastUpdate = time.time()
 
-    with open('CSG_data.p','wb') as handle:
+    with open('data/tetris_data.p','wb') as handle:
         pickle.dump(data, handle)        
 
 def getTrainingData(path):
