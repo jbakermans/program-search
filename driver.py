@@ -1,4 +1,5 @@
 from CAD import *
+from tetris import *
 from tool_set import *
 import matplotlib.pyplot as plot
 
