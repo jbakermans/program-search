@@ -53,7 +53,7 @@ class Tetris(Program):
 
     def execute(self):
         # Only render if this has not been rendered before. Pad to RESOLUTION
-        if self._rendering is None: self._rendering = padToFit(self.render())
+        if self._rendering is None: self._rendering = padToFit(1 * (self.render() > 0))
         return self._rendering
 
     def clearRendering(self):
@@ -122,7 +122,7 @@ class Primitive(Tetris):
         return (self.token)
     
     def render(self):
-        return self.shape
+        return self.shape * (self.index + 1)
     
 # Make all the primitives. Would be nice to do this in a function, then loop
 # (class factory pattern) but then I can't pickle, because the class is local
@@ -190,7 +190,7 @@ class Hor(Tetris):
             else dsl.hor(self.elements[0].render(), 
                          self.elements[1].render(), 
                          shift=self.shift)
-    
+            
 class Vert(Tetris):
     token = 'v'
     type = arrow(tTetris, tTetris, 
@@ -293,6 +293,25 @@ def plotShape(s, filename=None):
         plt.savefig(filename)
     else:
         plt.show()
+        
+def plotSolution(s, filename=None):
+    from matplotlib import colors, cm
+    # Get tab10 color map: discrete series of 10 colours
+    tab10 = cm.get_cmap('tab10')
+    # Then create a new colormap that starts with white
+    cmap = colors.ListedColormap(['w'] + [tab10(i) for i in np.arange(10)])
+    # Plot rendered shape
+    plt.imshow(padToFit(s.render()), cmap=cmap, vmin=0, vmax=10)
+    # Create clean canvas
+    plt.xticks([])
+    plt.yticks([])       
+    # Set title to program that generates shape
+    plt.title(str(s))
+    # If filename is provided: export figure
+    if filename:
+        plt.savefig(filename)
+    else:
+        plt.show()        
 
 """Neural networks"""
 class ObjectEncoder(CNN):

@@ -94,8 +94,8 @@ def combine(shapes, positions):
         r, c = p[0] - canvas_r, p[1] - canvas_c
         # Select part of canvas draw on
         draw_area = canvas[r:(r + s.shape[0]), c:(c + s.shape[1])]
-        # And colour in all values that are 1 in the shape
-        draw_area[s == 1] = 1
+        # And colour in all values that are non-zero in the shape
+        draw_area[s > 0] = s[s > 0]
     # Return canvas with input shapes on it
     return canvas
 
