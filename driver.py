@@ -9,7 +9,7 @@ import random
 
 from datetime import datetime
 
-def get_arguments(mode=None):
+def get_arguments(mode=None, options=None):
     # Bit hacky but I want to be able to run this from a interactive python terminal,
     # so instead of just command line arguments I want to create arguments in function
     import argparse
@@ -20,7 +20,7 @@ def get_arguments(mode=None):
                                              "critic","render"])
     else:
         parser.add_argument("--mode", default=mode)
-    # All other arguments are just defaults        
+    # All other arguments optional
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--maxShapes", default=7,
                             type=int)
@@ -52,6 +52,13 @@ def get_arguments(mode=None):
     # Parse to get arguments
     arguments = parser.parse_args()
     arguments.translate = not arguments.noTranslate    
+    # Collect all variables in arguments in a dictionary
+    arg_dict = vars(arguments)
+    # Update according to options, if provided
+    if options:
+        for k, v in options.items():
+            if k in arg_dict.keys():
+                arg_dict[k] = v
     # Return arguments
     return arguments
 
