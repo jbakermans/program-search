@@ -53,7 +53,7 @@ class Tetris(Program):
 
     def execute(self):
         # Only render if this has not been rendered before. Pad to RESOLUTION
-        if self._rendering is None: self._rendering = padToFit(1 * (self.render() > 0))
+        if self._rendering is None: self._rendering = padToFit(1.0 * (self.render() > 0))
         return self._rendering
 
     def clearRendering(self):
