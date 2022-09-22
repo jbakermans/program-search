@@ -296,13 +296,14 @@ def plotShape(s, filename=None):
 
 """Neural networks"""
 class ObjectEncoder(CNN):
-    """Encodes a 2d object. Why is input dimension RESOLUTION * 2?"""
+    """Encodes a 2d object."""
     def __init__(self):
         super(ObjectEncoder, self).__init__(channels=2,
-                                            inputImageDimension=RESOLUTION*2,
+                                            inputImageDimension=RESOLUTION,
                                             filterSizes=[3,3,3,3],
                                             poolSizes=[2,2,1,1],
-                                            numberOfFilters=[32,32,32,16])                                            
+                                            numberOfFilters=[32,32,32,16])    
+                                        
     def forward(self, spec, obj):
         if isinstance(spec, list):
             # batching both along specs and objects
@@ -318,10 +319,10 @@ class ObjectEncoder(CNN):
             return super(ObjectEncoder, self).forward(np.stack([spec, obj]))
 
 class SpecEncoder(CNN):
-    """Encodes a 2d spec. Why is input dimension RESOLUTION * 2? """
+    """Encodes a 2d spec."""
     def __init__(self):
         super(SpecEncoder, self).__init__(channels=1,
-                                          inputImageDimension=RESOLUTION*2,
+                                          inputImageDimension=RESOLUTION,
                                           filterSizes=[3,3,3,3],
                                           poolSizes=[2,2,1,1],
                                           numberOfFilters=[32,32,32,16])
