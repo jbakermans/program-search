@@ -351,14 +351,14 @@ class SpecEncoder(CNN):
 def randomScene(maxShapes=5, minShapes=1, verbose=False, export=None):
     # Choose number of shapes to include
     desiredShapes = np.random.randint(minShapes, maxShapes + 1)
+    # Randomly sample from primitives
+    currPrimitives = random.sample([p for p in Primitives], 
+                                  min(desiredShapes, len(Primitives)))
     # Generate initial shape
-    s=Primitives[np.random.randint(len(dsl.PRIMITIVES))]()
-    for _ in range(desiredShapes - 1):
-        # Sample new primitive and add to list of arguments
-        o = [s, Primitives[np.random.randint(len(dsl.PRIMITIVES))]()]
-        # Resample new primitive until it's unique
-        while o[1] in o[0]:
-            o[1] = Primitives[np.random.randint(len(dsl.PRIMITIVES))]()
+    s=currPrimitives[0]()
+    for currPrimitive in currPrimitives[1:]:
+        # Add next primitive to list of arguments for current step
+        o = [s, currPrimitive()]
         # Shuffle objects randomly, so which goes where is random
         np.random.shuffle(o)
         # Get shapes of rendered version of both, because that will constrain shift
