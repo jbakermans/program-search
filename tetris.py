@@ -491,32 +491,32 @@ def plotTestResults(testResults, timeout, defaultLoss=None,
         losses = [ min([defaultLoss] + [r.loss for r in rs]) for rs in results ]
         return sum(losses)/len(losses)
 
-    plot.figure()
-    plot.xlabel('Time')
-    plot.ylabel('Average Loss')
-    plot.ylim(bottom=0.)
+    plt.figure()
+    plt.xlabel('Time')
+    plt.ylabel('Average Loss')
+    plt.ylim(bottom=0.)
     for n in range(len(testResults)):
         xs = list(np.arange(0,timeout,0.1))
-        plot.plot(xs, [averageLoss(n,lambda r: r.time < x) for x in xs],
+        plt.plot(xs, [averageLoss(n,lambda r: r.time < x) for x in xs],
                   label=names[n])
-    plot.legend()
+    plt.legend()
     if export:
-        plot.savefig(export)
+        plt.savefig(export)
     else:
-        plot.show()
-    plot.figure()
-    plot.xlabel('Evaluations')
-    plot.ylabel('Average Loss')
-    plot.ylim(bottom=0.)
+        plt.show()
+    plt.figure()
+    plt.xlabel('Evaluations')
+    plt.ylabel('Average Loss')
+    plt.ylim(bottom=0.)
     for n in range(len(testResults)):
         xs = list(range(max(r.evaluations for tr in testResults[n] for r in tr )))
-        plot.plot(xs, [averageLoss(n,lambda r: r.evaluations < x) for x in xs],
+        plt.plot(xs, [averageLoss(n,lambda r: r.evaluations < x) for x in xs],
                   label=names[n])
-    plot.legend()
+    plt.legend()
     if export:
-        plot.savefig(f"{export}_evaluations.png")
+        plt.savefig(f"{export}_evaluations.png")
     else:
-        plot.show()
+        plt.show()
         
 def makeTrainingData():
     data = {} # Map from image to (size, {programs})
