@@ -45,7 +45,7 @@ def get_arguments(mode=None, options=None):
     parser.add_argument("--noTranslate", default=True, action='store_true')
     parser.add_argument("--resume", default=None, type=str)
     parser.add_argument("--render", default=[],type=str,nargs='+')
-    parser.add_argument("--tools", default=False, action='store_true')
+    parser.add_argument("--task", default=False, action='store_true')
     parser.add_argument("--noExecution", default=False, action='store_true')
     parser.add_argument("--rotate", default=False, action='store_true')
     parser.add_argument("--solvers",default=["fs"],nargs='+')
@@ -88,8 +88,9 @@ def run(arguments):
         for _ in range(ns):
             rs().execute()
         print(f"{ns/(time.time() - startTime)} (renders + samples)/second")
-        if arguments.tools:
-            print('Tools not implemented')
+        if arguments.task:
+            # Render all scenes that participants have to solve in task
+            rs = loadShapes('data/task.txt')
         else:
             rs = [rs() for _ in range(10) ]
             
@@ -168,11 +169,12 @@ def run(arguments):
                               exitIterations=-1)
     elif arguments.mode == "test":
         m = load_checkpoint(arguments.checkpoint)
-        if arguments.tools:
-            print('Tools not implemented')
+        if arguments.task:
+            # Test on shapes in participant task
+            dataGenerator = loadShapes('data/task.txt')
         else:
             dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
-        if arguments.tools:
+        if arguments.task:
             suffix = "tools"
         else:
             suffix = f"{arguments.maxShapes}_shapes"
