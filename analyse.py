@@ -12,6 +12,7 @@ import json
 import tetris
 import numpy as np
 import dsl
+from matplotlib import pyplot as plt
 
 def get_in_solution(solution, target):
     # Find which objects are included in the solution
@@ -47,7 +48,7 @@ def get_model_order(solution, target):
             if n in best_object and isinstance(n, tetris.Primitive)]
 
 # Specify all timestamps of model data to load
-model_paths = ['2022-10-17T11:04:49']
+model_paths = ['2022-10-18T16:40:42','2022-10-18T17:08:10']
 # Load all of them
 model_data = []
 for curr_path in model_paths:
@@ -141,4 +142,22 @@ for d_i, data in enumerate(model_data):
         model_primitives[d_i, trial] = len(primitive_order) if model_correct[d_i, trial] else np.nan
         model_moves[d_i, trial] = data[trial].evaluations
         # Store order
-        model_order[d_i][trial] = primitive_order
+        model_order[d_i][trial] = primitive_order      
+
+# Plot results
+plt.figure()
+for r_i, (dat, name) in enumerate(zip(
+        [[human_correct, human_time, human_primitives, human_moves],
+         [model_correct, model_time, model_primitives, model_moves]],
+        ['Human', 'Model'])):
+    for c_i, (y, y_label) in enumerate(
+            zip(dat, ['Correct (T/F)', 'Time (seconds)', '# Primitives (1)', '# Moves (1)'])):
+        plt.subplot(2, 4, r_i * 4 + c_i + 1)
+        plt.plot(np.arange(y.shape[1]), y.transpose(), color=(0.8, 0.8, 0.8))
+        plt.errorbar(np.arange(y.shape[1]), np.nanmean(y, axis=0), np.nanstd(y, axis=0)/np.sqrt(y.shape[1]), color=(0,0,0))
+        plt.ylabel(y_label)
+        plt.title(name)
+        #plt.title(names)
+        if r_i == 1:
+            plt.xlabel('Stimuli')  
+          
