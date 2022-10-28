@@ -1,0 +1,17 @@
+# Ignore Mac system files
+.DS_store
+
+# Ignore hidden files
+.*
+
+# don't ignore the gitignore
+!/.gitignore
+
+# ignore pychache
+__pycache__/
+
+# ignore experiments
+experimentOutputs
+
+# ignore checkpoints
+experimentOutputs
