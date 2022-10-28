@@ -14,4 +14,4 @@ __pycache__/
 experimentOutputs
 
 # ignore checkpoints
-experimentOutputs
+checkpoints
