@@ -15,66 +15,56 @@ import dsl
 import random
 from matplotlib import pyplot as plt
 
-def get_in_solution_human(solution, target):
-    # Find which objects are included in the solution
-    in_solution = []
-    for i, (pos, shape) in enumerate(zip(solution, dsl.PRIMITIVES)):
-        if (pos[0] + shape.shape[1] > 0 and pos[0] < len(target[0])
-            and pos[1] + shape.shape[0] > 0 and pos[1] < len(target)):
-            in_solution.append(i)
-    # Return list of objects in solution, in order of object id
-    return in_solution
-        
-def get_final_moves_human(in_solution, events):
-    # Collect final move for all objects that are part of solution
-    final_move = []
-    for i in in_solution:
-        for t, move in enumerate(events[::-1]):
-            if move['id'] == i:
-                # Swap x and y 
-                final_move.append({'t': len(events) - t,
-                                  'x': move['release']['x'], 
-                                  'y': move['release']['y'],
-                                  'id': i})
-                break
-    # Return final moves in order of appearance
-    return sorted(final_move, key=lambda d: d['t'])
+def get_order_human(solution):
+    # Get all primitives that are part of submitted solution
+    submitted = [s['id'] for s in 
+                 [e for e in solution if 'submit' in e.keys()][-1]['submit']['self']]
+    # If the submission was just a primitive without any combination: return immediately
+    if len(submitted) == 1: return submitted
+    # Find last reset, to only include steps that build towards solution
+    last_reset = [e for e in solution if e['type'] == 'reset'][-1]['time']
+    # Then collect all combine events leading towards solution after last reset
+    combine = [e for e in solution if e['time'] > last_reset and 'combine' in e.keys()]
+    # Walk through all combine events, and add primitives as they are added to solution
+    primitives_order = []
+    for e in combine:
+        for s in e['combine']['new']:
+            if s['id'] in submitted and s['id'] not in primitives_order:
+                primitives_order.append(s['id'])
+    # If the submission was just a primitive without any combination: use submitted
+    return primitives_order
 
-def plot_trace_human(events, target):
-    # Initialise all object positions at None, so they will be ignored
-    pos = [None for _ in range(9)]
-    # Each plot is a step towards the solution by the participant
-    plots = []    
-    # Extract steps towards solution: anything that comes or leaves overlap with target
-    for curr_event in events:
-        # Get shape, start, and stop
-        shape_id = curr_event['id']
-        start = [curr_event['press']['y'], curr_event['press']['x']]
-        stop = [curr_event['release']['y'], curr_event['release']['x']]
-        # Skip this event if nothing changed
-        if start == stop:
-            continue
-        # If this moved to overlap position
-        if dsl.do_overlap([target, dsl.PRIMITIVES[shape_id]], [[0,0], stop]):
-            # Update position after event
-            pos[shape_id] = stop
-            # Then plot
-            plots.append(plot_partial_programs_human(pos))
-        else:
-            # If this didn't move to overlap position: see if it came from overlap pos
-            if dsl.do_overlap([target, dsl.PRIMITIVES[shape_id]], [[0,0], start]):
-                # In that case update position to have moved out
-                pos[shape_id] = None
-                # And plot
-                plots.append(plot_partial_programs_human(pos))
-    return plots
-
-def plot_partial_programs_human(pos):
-    return dsl.combine([dsl.PRIMITIVES[i] * (i + 1) for i, p in enumerate(pos)
-                              if p is not None], 
-                             [p for p in pos
-                              if p is not None]) \
-        if any([p is not None for p in pos]) else np.array([[0]])
+def plot_trace_human(solution):
+    # Get partial programs at each solution step
+    pp = []
+    for event in solution:
+        # If this is a reset event (except for the initialisation): clear the pp
+        if event['type'] == 'reset' and len(pp) > 0:
+            pp.append([])
+        if 'combine' in event.keys():
+            # If the combined objects aren't in pp already: need to recruit them first
+            if len(pp) == 0 or (event['combine']['self'] not in pp[-1] 
+                                or event['combine']['other'] not in pp[-1]):
+                pp.append([event['combine']['self'], event['combine']['other']] 
+                          + [p for p in (pp[-1] if len(pp) > 0 else []) 
+                             if p != event['combine']['self'] 
+                             and p != event['combine']['other']])
+            # Then add the current combination, and copy over any previous nodes            
+            pp.append([event['combine']['new']] + [p for p in pp[-1]
+                                                   if p != event['combine']['self'] and
+                                                   p != event['combine']['other']])            
+        if 'submit' in event.keys():
+            # Add the final submitted solution to the partial programs, if it isn't there already
+            if len(pp) == 0 or pp[-1] != [event['submit']['self']]:
+                pp.append([event['submit']['self']])
+    # Render all partial programs at each step
+    pp_rendered = [[dsl.combine([dsl.PRIMITIVES[prim['id']] * (prim['id'] + 1) for prim in p], 
+                               [[prim['y'], prim['x']] for prim in p])
+                    for p in pps] if len(pps) > 0 else [] 
+                   for pps in pp]
+    # Return a list of canvases with all partial programs plotted together at each step
+    return plot_partial_programs_combined(pp_rendered)
+    
 
 def get_order_model(solution, target):
     # Select object with lowest loss
@@ -90,34 +80,45 @@ def plot_trace_model(solution):
     for node in solution.program.nodes:
         # Add the current solution node, and copy over any previous nodes if not in current
         pp.append([node] + [p for p in (pp[-1] if len(pp) > 0 else []) if p not in node])
+    # Render all partial programs at each step
+    pp_rendered = [[p.render() for p in pps] for pps in pp]
+    # Return a list of canvases with all partial programs plotted together at each step
+    return plot_partial_programs_combined(pp_rendered)
+
+def plot_partial_programs_combined(pp_rendered):
     # Get ceil sqrt of max nr of partial programs at any time for canvas rows, cols
-    canvas_dim = int(np.ceil(np.sqrt(np.max([len(step) for step in pp]))))
-    # Then build the canvas for each step by adding in each of the partial programs
+    canvas_dim = int(np.ceil(np.sqrt(np.max([len(step) for step in pp_rendered]))))
+    # Output plots all partial programs at each step on one canvas
     plots = []
-    for pps in pp:
-        # Get number of rows in current plot
-        rows = int(np.ceil(len(pps) / canvas_dim))
-        # Find height of each row in the current plot: max nr of rows across pps
-        h = [max([p.render().shape[0] for p in 
-                  pps[(curr_row * canvas_dim):((curr_row + 1 ) * canvas_dim)]]) + 1
-             for curr_row in range(rows)]
-        # To use height as coordinate, start at 0
-        h = [0] + h
-        # Then calculate position for each: row given by heights, col by previous
-        pos = []
-        for p_i, prev_p in enumerate([-1] + pps[:-1]):
-            # If this is the first column: col value is 0
-            if p_i % canvas_dim == 0:
-                col = 0
-            else:
-                # Col value given by previous col plus previous width + 1
-                col = pos[-1][0] + prev_p.render().shape[1] + 1
-            # The row value is given by the heights
-            row = h[int(p_i / canvas_dim)]
-            # Add row, col coordinate to position lists
-            pos.append([row, col])
-        # Now that all partial programs have positions, I can build the plots
-        plots.append(dsl.combine([p.render() for p in pps], pos))    
+    for pps in pp_rendered:
+        # Only set positions if partial program set is not empty
+        if len(pps) > 0:
+            # Get number of rows in current plot
+            rows = int(np.ceil(len(pps) / canvas_dim))
+            # Find height of each row in the current plot: max nr of rows across pps
+            h = [max([p.shape[0] for p in 
+                      pps[(curr_row * canvas_dim):((curr_row + 1 ) * canvas_dim)]]) + 1
+                 for curr_row in range(rows)]
+            # To use height as coordinate, start at 0
+            h = [0] + h
+            # Then calculate position for each: row given by heights, col by previous
+            pos = []
+            for p_i, prev_p in enumerate([-1] + pps[:-1]):
+                # If this is the first column: col value is 0
+                if p_i % canvas_dim == 0:
+                    col = 0
+                else:
+                    # Col value given by previous col plus previous width + 1
+                    col = pos[-1][0] + prev_p.shape[1] + 1
+                # The row value is given by the heights
+                row = h[int(p_i / canvas_dim)]
+                # Add row, col coordinate to position lists
+                pos.append([row, col])
+            # Add final list of positions to pp positions
+            plots.append(dsl.combine([p for p in pps], pos))
+        else:
+            # Empty positions for empty partial program set
+            plots.append(np.array([[0]]))
     return plots
 
 # Specify all timestamps of model data to load
@@ -137,9 +138,9 @@ for curr_path in model_paths:
     model_data.append(results)
 
 # List files in participant data directory
-human_files = sorted([i for i in os.listdir('../tetris-program-synthesis/data') if '.txt' in i])
+human_files = sorted([i for i in os.listdir('data/human') if '.txt' in i])
 # Get full path for each participant
-human_paths = [os.path.join('../tetris-program-synthesis/data', p) for p in human_files]
+human_paths = [os.path.join('data/human', p) for p in human_files]
 # Load all of them
 human_data = []
 for filename in human_paths:
@@ -159,7 +160,7 @@ task = tetris.loadShapes('data/task.txt')
 n_models = len(model_data)
 n_participants = len(human_data)
 # Get number of trials
-n_trials = len(task)
+n_trials = 21#len(task)
 
 # Initialise data matrices. Correct solution or wrong
 human_correct = np.zeros((n_participants, n_trials))
@@ -192,22 +193,19 @@ for d_i, data in enumerate(human_data):
     for trial in range(n_trials):
         # Print progress
         print(f"Processing sub {d_i+1} / {len(human_data)}, trial {trial+1} / {data['n_trials']}...")  
-        # Find which primitives ended up in solution
-        in_solution = get_in_solution_human(data['trial_solution'][trial], data['trial_target'][trial])
-        # Find final moves: the shapes in the solution dragged to their final position
-        final_moves = get_final_moves_human(in_solution, data['trial_events'][trial])
+        # Get the primitives of this solution in order
+        primitive_order = get_order_human(data['trial_events'][trial])
         # Get the current target id, which is what data matrices are ordered by
         target_id = data['trial_target_ids'][trial]
         # Collect values
         human_correct[d_i, target_id] = data['trial_correct'][trial]
         human_time[d_i, target_id] = data['trial_time'][trial]/1000
-        human_primitives[d_i, target_id] = len(in_solution) if human_correct[d_i, trial] else np.nan
+        human_primitives[d_i, target_id] = len(primitive_order) if human_correct[d_i, trial] else np.nan
         human_moves[d_i, target_id] = len(data['trial_events'][trial])
         # Store order
-        human_order[d_i][target_id] = [m['id'] for m in final_moves]
+        human_order[d_i][target_id] = primitive_order
         # Extract traces
-        human_trace[d_i][target_id] = plot_trace_human(data['trial_events'][trial], 
-                                                       np.array(data['trial_target'][trial]))
+        human_trace[d_i][target_id] = plot_trace_human(data['trial_events'][trial])
         
 # And then for the model
 for d_i, data in enumerate(model_data):
@@ -217,7 +215,7 @@ for d_i, data in enumerate(model_data):
         # Get the primitives of this solution in order
         primitive_order = get_order_model(data[trial], task[trial])
         # Collect values
-        model_correct[d_i, trial] = (data[trial].loss == 0)
+        model_correct[d_i, trial] = (1 - data[trial].loss)
         model_time[d_i, trial] = data[trial].time
         model_primitives[d_i, trial] = len(primitive_order) if model_correct[d_i, trial] else np.nan
         model_moves[d_i, trial] = data[trial].evaluations
@@ -252,7 +250,7 @@ for d_i in range(n_trials):
     # Then create a new colormap that starts with white
     cmap = colors.ListedColormap(['w'] + [tab10(i) for i in np.arange(10)])
     # Collect data for this trial
-    curr_humans = random.sample(list(range(n_participants)), 2)
+    curr_humans = random.sample(list(range(n_participants)), 1)
     curr_models = list(range(n_models))
     human_dat = [human_trace[h_i][d_i] for h_i in curr_humans]
     model_dat = [model_trace[m_i][d_i] for m_i in curr_models]
@@ -267,9 +265,9 @@ for d_i in range(n_trials):
     # Second and third row: human and model trace
     for row, (dat, name) in enumerate(zip(
             human_dat + model_dat, 
-            ['Human ' + str(h_i) + (' (correct)' if human_correct[h_i][d_i] 
+            ['Human ' + str(h_i) + (' (correct)' if human_correct[h_i][d_i] == 1 
                                     else ' (incorrect)')for h_i in curr_humans] +
-            ['Model ' + str(m_i) + (' (correct)' if model_correct[m_i][d_i] 
+            ['Model ' + str(m_i) + (' (correct)' if model_correct[m_i][d_i] == 1
                                     else ' (incorrect)') for m_i in curr_models])):
         # Get maximum width & height across data for plotting
         h, w = [max([p.shape[0] for p in dat]), max([p.shape[1] for p in dat])]
@@ -284,7 +282,7 @@ for d_i in range(n_trials):
             if i == 0:
                 ax.set_title(name)
     # Optional: save each figure, then close
-    if True:
+    if False:
         plt.show()
         plt.savefig(f'/Users/jbakermans/Google Drive/DPhil/Presentations/Own/BMM2022/Traces/trace_{d_i:03}.png')
         plt.close()
