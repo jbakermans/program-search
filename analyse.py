@@ -14,6 +14,7 @@ import numpy as np
 import dsl
 import random
 from matplotlib import pyplot as plt
+from scipy.stats import kendalltau
 
 def get_order_human(solution):
     # Get all primitives that are part of submitted solution
@@ -71,8 +72,11 @@ def get_order_model(solution, target):
     best_object = solution.program.objects()[
         np.argmax([target.IoU(p) for p in solution.program.objects()])]
     # Walk through solution nodes, and include them if they are in the best object
-    return [n.index for n in solution.program.nodes 
-            if n in best_object and isinstance(n, tetris.Primitive)]
+    order = []
+    for n in solution.program.nodes:
+        if n in best_object and isinstance(n, tetris.Primitive) and not n.index in order:
+            order.append(n.index)
+    return order
 
 def plot_trace_model(solution):
     # Get partial programs at each solution step
@@ -121,8 +125,59 @@ def plot_partial_programs_combined(pp_rendered):
             plots.append(np.array([[0]]))
     return plots
 
+def match_sequence(orders):
+    # Get number of shapes and number of participants
+    n_participants = len(orders)
+    n_trials = len(orders[0])
+    # Create a big matrix of N * (N-1) / 2 pairs of kendall tau correlations for each shape
+    corrs = np.full((int(n_participants * (n_participants - 1) / 2), n_trials), np.nan)
+    # For each shape: run through all correlations
+    for curr_shape in range(n_trials):
+        c = -1
+        for i in range(n_participants):
+            for j in range(i + 1, n_participants):
+                c += 1
+                # Collect sequences to compare
+                seq1 = orders[i][curr_shape]
+                seq2 = orders[j][curr_shape]
+                # Remove anything that they don't have both
+                seq1 = [s for s in seq1 if s in seq2]
+                seq2 = [s for s in seq2 if s in seq1]
+                # Set sequence 1 to the index of appearance in 2
+                seq1 = [seq2.index(s) for s in seq1]
+                # And then sequence 2 is simply in order
+                seq2 = [i for i in range(len(seq2))]
+                # Then calculate kendall tau rank correlation
+                tau, _ = kendalltau(seq1, seq2)
+                # Only add if finite
+                if np.isfinite(tau): corrs[c, curr_shape] = tau
+    return corrs
+
+def match_shapes(orders):
+    # Get number of shapes and number of participants
+    n_participants = len(orders)
+    n_trials = len(orders[0])
+    # Create a big matrix of N * (N-1) / 2 pairs of Szymkiewicz–Simpson for each shape
+    overlap = np.full((int(n_participants * (n_participants - 1) / 2), n_trials), np.nan)
+    # For each shape: run through all correlations
+    for curr_shape in range(n_trials):
+        c = -1
+        for i in range(n_participants):
+            for j in range(i + 1, n_participants):
+                c += 1
+                # Collect sequences to compare
+                seq1 = orders[i][curr_shape]
+                seq2 = orders[j][curr_shape]
+                # Find intersection: shapes in both of the sequences
+                intersection = set(seq1).intersection(set(seq2))
+                # Calculate https://en.wikipedia.org/wiki/Overlap_coefficient
+                curr_ss = len(intersection) / min(len(seq1), len(seq2))
+                # Only add if finite
+                if np.isfinite(curr_ss): overlap[c, curr_shape] = curr_ss
+    return overlap    
+
 # Specify all timestamps of model data to load
-model_paths = ['2022-10-18T16:40:42','2022-10-18T17:08:10']
+model_paths = sorted([i for i in os.listdir('experimentOutputs') if '2022-12-07' in i])
 # Load all of them
 model_data = []
 for curr_path in model_paths:
@@ -160,7 +215,7 @@ task = tetris.loadShapes('data/task.txt')
 n_models = len(model_data)
 n_participants = len(human_data)
 # Get number of trials
-n_trials = 21#len(task)
+n_trials = len(task)
 
 # Initialise data matrices. Correct solution or wrong
 human_correct = np.zeros((n_participants, n_trials))
@@ -206,12 +261,15 @@ for d_i, data in enumerate(human_data):
         human_order[d_i][target_id] = primitive_order
         # Extract traces
         human_trace[d_i][target_id] = plot_trace_human(data['trial_events'][trial])
+# Calculate shape and sequence overlaps between all pairs of participants
+human_match_shape = match_shapes(human_order)
+human_match_sequence = match_sequence(human_order)
         
 # And then for the model
 for d_i, data in enumerate(model_data):
     for trial in range(n_trials):
         # Print progress
-        print(f"Processing mod {d_i+1} / {len(data)}, trial {trial+1} / {n_trials}...")  
+        print(f"Processing mod {d_i+1} / {len(model_data)}, trial {trial+1} / {n_trials}...")  
         # Get the primitives of this solution in order
         primitive_order = get_order_model(data[trial], task[trial])
         # Collect values
@@ -220,29 +278,54 @@ for d_i, data in enumerate(model_data):
         model_primitives[d_i, trial] = len(primitive_order) if model_correct[d_i, trial] else np.nan
         model_moves[d_i, trial] = data[trial].evaluations
         # Store order
-        model_order[d_i][trial] = primitive_order     
+        model_order[d_i][trial] = primitive_order
         # Extract traces
         model_trace[d_i][trial] = plot_trace_model(data[trial])
+# Calculate shape and sequence overlaps between all pairs of models
+model_match_shape = match_shapes(model_order)
+model_match_sequence = match_sequence(model_order)
 
-# Plot results
+# Plot basic performance results
 plt.figure()
 for r_i, (dat, name) in enumerate(zip(
         [[human_correct, human_time, human_primitives, human_moves],
          [model_correct, model_time, model_primitives, model_moves]],
         ['Human', 'Model'])):
-    for c_i, (y, y_label) in enumerate(
-            zip(dat, ['Correct (T/F)', 'Time (seconds)', '# Primitives (1)', '# Moves (1)'])):
+    for c_i, (y, y_label, y_lim) in enumerate(
+            zip(dat, ['Correct (T/F)', 'Time (seconds)', '# Primitives (1)', '# Moves (1)'],
+                [[0, 1], [], [2, 6], [2, 20]])):
         plt.subplot(2, 4, r_i * 4 + c_i + 1)
+        if c_i == 2: 
+            plt.plot([sum([p() in t for p in tetris.Primitives]) for t in task], 'r.')
         plt.plot(np.arange(y.shape[1]), y.transpose(), color=(0.8, 0.8, 0.8))
-        plt.errorbar(np.arange(y.shape[1]), np.nanmean(y, axis=0), np.nanstd(y, axis=0)/np.sqrt(y.shape[1]), color=(0,0,0))
+        plt.errorbar(np.arange(y.shape[1]), np.nanmean(y, axis=0), np.nanstd(y, axis=0)/np.sqrt(y.shape[0]), color=(0,0,0))
         plt.ylabel(y_label)
+        if len(y_lim) > 0: plt.ylim(y_lim)
         plt.title(name)
-        #plt.title(names)
         if r_i == 1:
             plt.xlabel('Stimuli')  
+            
+# Plot population similarity results
+plt.figure()
+for r_i, (dat, name) in enumerate(zip(
+        [[model_match_shape, model_match_sequence],
+         [model_match_shape, model_match_sequence]],
+        ['Human', 'Model'])):
+    for c_i, (y, y_label, y_lim) in enumerate(
+            zip(dat, ['Shape match', 'Sequence match'],
+                [[0, 1], [-1, 1]])):
+        plt.subplot(2, 2, r_i * 2 + c_i + 1)        
+        plt.violinplot(dataset=[y[np.isfinite(y[:, i]), i] for i in range(n_trials)],
+                       positions=range(n_trials),
+                       widths=0.9)
+        plt.ylabel(y_label)
+        if len(y_lim) > 0: plt.ylim(y_lim)
+        plt.title(name)
+        if r_i == 1:
+            plt.xlabel('Stimuli')          
           
 # Plot some human and model traces for each trial
-for d_i in range(n_trials):
+for d_i in range(0):
     # Create colormap that shows how silhouettes are built from blocks
     from matplotlib import colors, cm
     # Get tab10 color map: discrete series of 10 colours
@@ -251,7 +334,7 @@ for d_i in range(n_trials):
     cmap = colors.ListedColormap(['w'] + [tab10(i) for i in np.arange(10)])
     # Collect data for this trial
     curr_humans = random.sample(list(range(n_participants)), 1)
-    curr_models = list(range(n_models))
+    curr_models = random.sample(list(range(n_models)), 3)
     human_dat = [human_trace[h_i][d_i] for h_i in curr_humans]
     model_dat = [model_trace[m_i][d_i] for m_i in curr_models]
     # After selecting data we know nr of rows (first row has spec)
