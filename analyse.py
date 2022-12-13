@@ -14,7 +14,7 @@ import numpy as np
 import dsl
 import random
 from matplotlib import pyplot as plt
-from scipy.stats import kendalltau
+from scipy.stats import kendalltau, ks_2samp
 
 def get_order_human(solution):
     # Get all primitives that are part of submitted solution
@@ -255,15 +255,31 @@ for d_i, data in enumerate(human_data):
         # Collect values
         human_correct[d_i, target_id] = data['trial_correct'][trial]
         human_time[d_i, target_id] = data['trial_time'][trial]/1000
-        human_primitives[d_i, target_id] = len(primitive_order) if human_correct[d_i, trial] else np.nan
+        human_primitives[d_i, target_id] = len(primitive_order) if human_correct[d_i, trial]==1 else np.nan
         human_moves[d_i, target_id] = len(data['trial_events'][trial])
         # Store order
         human_order[d_i][target_id] = primitive_order
         # Extract traces
         human_trace[d_i][target_id] = plot_trace_human(data['trial_events'][trial])
+# Z-score times to account for participant differences
+human_time_z = (human_time - np.nanmean(human_time, axis=1).reshape(-1,1)) \
+    / np.nanstd(human_time, axis=1).reshape(-1,1)
+# Collect unshuffled data but just for training trials: see if participants get faster
+human_train_correct = np.zeros((n_participants, n_trials))
+human_train_time = np.zeros((n_participants, n_trials))
+for d_i, data in enumerate(human_data):
+    for trial in range(n_trials):
+        human_train_correct[d_i, trial] = data['trial_correct'][trial]
+        human_train_time[d_i, trial] = data['trial_time'][trial]/1000
+
 # Calculate shape and sequence overlaps between all pairs of participants
 human_match_shape = match_shapes(human_order)
 human_match_sequence = match_sequence(human_order)
+# Calculate average performance across nrs of primitives in solution
+human_average_performance = np.stack(
+    [np.mean(human_correct[:,9:13], axis=1),
+     np.mean(human_correct[:,13:17], axis=1),
+     np.mean(human_correct[:,17:], axis=1)]);
         
 # And then for the model
 for d_i, data in enumerate(model_data):
@@ -275,57 +291,185 @@ for d_i, data in enumerate(model_data):
         # Collect values
         model_correct[d_i, trial] = (1 - data[trial].loss)
         model_time[d_i, trial] = data[trial].time
-        model_primitives[d_i, trial] = len(primitive_order) if model_correct[d_i, trial] else np.nan
+        model_primitives[d_i, trial] = len(primitive_order) if model_correct[d_i, trial]==1 else np.nan
         model_moves[d_i, trial] = data[trial].evaluations
         # Store order
         model_order[d_i][trial] = primitive_order
         # Extract traces
         model_trace[d_i][trial] = plot_trace_model(data[trial])
+# Z-score times to make comparable to humans
+model_time_z = (model_time - np.nanmean(model_time, axis=1).reshape(-1,1)) \
+    / np.nanstd(model_time, axis=1).reshape(-1,1)        
 # Calculate shape and sequence overlaps between all pairs of models
 model_match_shape = match_shapes(model_order)
 model_match_sequence = match_sequence(model_order)
+# Calculate average performance across nrs of primitives in solution
+model_average_performance = np.stack(
+    [np.mean(model_correct[:,9:13], axis=1),
+     np.mean(model_correct[:,13:17], axis=1),
+     np.mean(model_correct[:,17:], axis=1)]);
 
-# Plot basic performance results
+# Now do a very quick-and-dirty permutation test to compare distributions:
+# when human use same shapes/orders for one puzzle, do models do the same?
+iters = 250
+# Calculate distribution distance between human and model, but shuffle puzzles
+match_shape_perms = np.zeros((iters))
+match_sequence_perms = np.zeros((iters))
+for i in range(iters):
+    # Print progress
+    print('Permutation iter ', i)
+    # Randomly shuffle sequence, to compare distributions of different puzzles
+    shuffled_trials = [i for i in range(n_trials)]
+    random.shuffle(shuffled_trials)
+    # Calculate 2 sample KS (distribution distance) after shuffling
+    match_shape_perms[i] = np.mean(
+        [ks_2samp(human_match_shape[:,a], model_match_shape[:,b]).statistic 
+         for a,b in enumerate(shuffled_trials)])
+    match_sequence_perms[i] = np.mean(
+        [ks_2samp(human_match_sequence[:,a], model_match_sequence[:,b]).statistic 
+         for a,b in enumerate(shuffled_trials)])
+# Calculate distribution distance for unshuffled puzzles
+match_shape_true = np.mean(
+    [ks_2samp(human_match_shape[:,a], model_match_shape[:,a]).statistic 
+     for a in range(n_trials)])
+match_sequence_true = np.mean(
+    [ks_2samp(human_match_sequence[:,a], model_match_sequence[:,a]).statistic 
+     for a in range(n_trials)])
+
+# Plot task: all puzzles in order, with a row for different nrs of primitives
 plt.figure()
 for r_i, (dat, name) in enumerate(zip(
-        [[human_correct, human_time, human_primitives, human_moves],
-         [model_correct, model_time, model_primitives, model_moves]],
+        [task[:3], task[3:6], task[6:9], task[9:13], task[13:17], task[17:]],
+        ['Train 3', 'Train 4', 'Train 5', 'Test 3', 'Test 4', 'Test 5'])):
+    for c_i, shape in enumerate(dat):
+        ax = plt.subplot(6, len(dat), r_i * len(dat) + c_i + 1)
+        ax.imshow(shape.render(), cmap='Greys', vmin=0, vmax=1)
+        ax.axis('off')
+        if c_i == 0:
+            ax.set_ylabel(name)
+
+# Plot performance and time over trials, in order of task appearance
+plt.figure()
+for r_i, (dat, name) in enumerate(zip(
+        [[human_train_correct[:,:9], human_train_time[:,:9]],
+         [human_train_correct[:,9:], human_train_time[:,9:]]],
+        ['Train', 'Test'])):
+    for c_i, (y, y_label, y_lim) in enumerate(
+            zip(dat, ['Performance (IoU)', 'Time (seconds)'],
+                [[0.5, 1], [0, 400]])):
+        plt.subplot(2, 2, r_i * 2 + c_i + 1)
+        plt.plot(np.arange(y.shape[1]) + 9 * (r_i==1), y.transpose(), color=(0.8, 0.8, 0.8))
+        plt.errorbar(np.arange(y.shape[1]) + 9 * (r_i==1), np.nanmean(y, axis=0), 
+                     np.nanstd(y, axis=0)/np.sqrt(y.shape[0]), color=(0,0,0))
+        if r_i == 0:
+            for train_shapes in range(3):
+                plt.plot([train_shapes*3, (train_shapes+1) * 3 - 1], 
+                         2*[np.nanmean(y[:,train_shapes*3:(train_shapes+1) * 3].reshape(-1))], 'r--')
+        else:
+            plt.plot([9, 9+y.shape[1]-1], 
+                     2*[np.nanmean(y.reshape(-1))], 'r--')
+                
+        plt.ylabel(y_label)
+        if len(y_lim) > 0: plt.ylim(y_lim)
+        if r_i == 1: plt.xlabel('Trial')
+        plt.title(name)
+
+# Plot performance, time, and nr of primitives in solution over puzzles
+plt.figure()
+for r_i, (dat, name) in enumerate(zip(
+        [[human_correct, human_time_z, human_primitives],
+         [model_correct, model_time_z, model_primitives]],
         ['Human', 'Model'])):
     for c_i, (y, y_label, y_lim) in enumerate(
-            zip(dat, ['Correct (T/F)', 'Time (seconds)', '# Primitives (1)', '# Moves (1)'],
-                [[0, 1], [], [2, 6], [2, 20]])):
-        plt.subplot(2, 4, r_i * 4 + c_i + 1)
+            zip(dat, ['Performance (IoU)', 'Time (z-scored)', '# Primitives (1)'],
+                [[0, 1], [-2, 4], [2, 6]])):
+        plt.subplot(2, 3, r_i * 3 + c_i + 1)
         if c_i == 2: 
             plt.plot([sum([p() in t for p in tetris.Primitives]) for t in task], 'r.')
         plt.plot(np.arange(y.shape[1]), y.transpose(), color=(0.8, 0.8, 0.8))
         plt.errorbar(np.arange(y.shape[1]), np.nanmean(y, axis=0), np.nanstd(y, axis=0)/np.sqrt(y.shape[0]), color=(0,0,0))
         plt.ylabel(y_label)
         if len(y_lim) > 0: plt.ylim(y_lim)
-        plt.title(name)
+        if c_i == 0: plt.title(name)
         if r_i == 1:
             plt.xlabel('Stimuli')  
             
-# Plot population similarity results
+# Plot population similarity results: do solutions use same primitives/order?
 plt.figure()
 for r_i, (dat, name) in enumerate(zip(
-        [[model_match_shape, model_match_sequence],
-         [model_match_shape, model_match_sequence]],
+        [[human_average_performance, human_match_shape, human_match_sequence],
+         [model_average_performance, model_match_shape, model_match_sequence]],
         ['Human', 'Model'])):
+    # First plot performance on average
+    plt.subplot(2, 3, r_i * 3 + 1)        
+    plt.violinplot(dataset=[dat[0][i] for i in range(3)],
+                   positions=[3,4,5],
+                   widths=0.9,
+                   showmeans=True)    
+    #plt.title(name)
+    if r_i == 1:
+        plt.xlabel('Nr of primitives')
+    plt.ylim([0.5, 1])
+    plt.ylabel('Performance (IoU)')
+    plt.title(name)
+    # Then plot matches
     for c_i, (y, y_label, y_lim) in enumerate(
-            zip(dat, ['Shape match', 'Sequence match'],
+            zip(dat[1:], ['Shape match (Szymkiewicz–Simpson)', 
+                          'Sequence match (Kendall tau)'],
                 [[0, 1], [-1, 1]])):
-        plt.subplot(2, 2, r_i * 2 + c_i + 1)        
+        plt.subplot(2, 3, r_i * 3 + c_i + 2)        
         plt.violinplot(dataset=[y[np.isfinite(y[:, i]), i] for i in range(n_trials)],
                        positions=range(n_trials),
-                       widths=0.9)
+                       widths=0.9,
+                       showmeans=False, showmedians=False, showextrema=False)
         plt.ylabel(y_label)
         if len(y_lim) > 0: plt.ylim(y_lim)
-        plt.title(name)
         if r_i == 1:
-            plt.xlabel('Stimuli')          
+            plt.xlabel('Stimuli') 
+            
+# Plot solution primitives/order distributions for humans next to models
+plt.figure()
+for r_i, (dat, name, y_label, y_lim) in enumerate(zip(
+        [[human_match_shape, model_match_shape],
+         [human_match_sequence, model_match_sequence]],
+        ['Shape match', 'Sequence match'],
+        ['Szymkiewicz–Simpson', 'Kendall tau'],
+        [[0,1], [-1, 1]])):
+    # Plot the 
+    plt.subplot(2,1,r_i+1)
+    l = []
+    for y_i, (y, col) in enumerate(zip(dat, ['red', 'blue'])):
+        p=plt.violinplot(dataset=[y[np.isfinite(y[:, i]), i] for i in range(n_trials)],
+                       positions=np.arange(n_trials)+0.25*y_i,
+                       widths=0.25,
+                       showmeans=False, showmedians=False, showextrema=False)
+        for b in p['bodies']:
+            b.set_color(col)
+        l.append(p['bodies'][0])
+    plt.legend(l, ['Human', 'Model'])
+    plt.title(name)
+    plt.ylim(y_lim)
+    plt.ylabel(y_label)
+    plt.title(name)
           
+# Plot permutation test that finds whether solution primitives/order distributions
+# are similar between human and models than
+plt.figure(); 
+plt.subplot(1,2,1)
+plt.hist(match_shape_perms)
+plt.plot([match_shape_true, match_shape_true], [0, iters/10])
+plt.title('Shape match')
+plt.legend(['Unpermuted', 'Trial permutations'])
+plt.xlabel('Kolmogorov–Smirnov distance')
+plt.subplot(1,2,2)
+plt.hist(match_sequence_perms)
+plt.plot([match_sequence_true, match_sequence_true], [0, iters/10])
+plt.title('Sequence match')
+plt.legend(['Unpermuted', 'Trial permutations'])
+plt.xlabel('Kolmogorov–Smirnov distance')
+    
 # Plot some human and model traces for each trial
-for d_i in range(0):
+for d_i in [7]: #range(0):
     # Create colormap that shows how silhouettes are built from blocks
     from matplotlib import colors, cm
     # Get tab10 color map: discrete series of 10 colours
@@ -333,8 +477,8 @@ for d_i in range(0):
     # Then create a new colormap that starts with white
     cmap = colors.ListedColormap(['w'] + [tab10(i) for i in np.arange(10)])
     # Collect data for this trial
-    curr_humans = random.sample(list(range(n_participants)), 1)
-    curr_models = random.sample(list(range(n_models)), 3)
+    curr_humans = random.sample(list(range(n_participants)), 5)
+    curr_models = random.sample(list(range(n_models)), 5)
     human_dat = [human_trace[h_i][d_i] for h_i in curr_humans]
     model_dat = [model_trace[m_i][d_i] for m_i in curr_models]
     # After selecting data we know nr of rows (first row has spec)
