@@ -142,10 +142,11 @@ def run(arguments):
         assert arguments.resume is not None, "You need to specify a checkpoint with --resume, which bootstraps the policy"
         m = torch.load(arguments.resume)
         critic = A2C(m)
+        # JB: I want to only reward completely correct solutions
         def R(spec, program):
             if len(program) == 0 or len(program) > len(spec.toTrace()): return False
             for o in program.objects():
-                if o.IoU(spec) > 0.95: return True
+                if o.IoU(spec) == 1: return True
             return False
         if arguments.td:
             training = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
