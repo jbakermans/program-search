@@ -608,7 +608,8 @@ class ProgramPointerNetwork(Module):
                 samples.append(None)
             else:
                 nextObject = self.DSL.parseLine(nextLineOfCode)
-                if nextObject is not None:
+                # JB: I want to disallow sampling objects that don't render
+                if nextObject is not None and nextObject.render() is not None:
                     samples.append(nextObject)
                 else:
                     samples.append(None)
@@ -638,7 +639,8 @@ class ProgramPointerNetwork(Module):
                 samples.append(None)
             else:
                 nextObject = self.DSL.parseLine(nextLineOfCode)
-                if nextObject is not None:
+                # JB: I want to disallow sampling objects that don't render
+                if nextObject is not None and nextObject.render() is not None:
                     samples.append(nextObject)
 
         return samples
