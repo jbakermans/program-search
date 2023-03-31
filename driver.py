@@ -17,7 +17,7 @@ def get_arguments(mode=None, options=None):
     # If mode is not provided: get it from input
     if mode is None:
         parser.add_argument("mode", choices=["imitation","exit","test","demo","makeData","heatMap",
-                                             "critic","render"])
+                                             "critic","render","embed"])
     else:
         parser.add_argument("--mode", default=mode)
     # All other arguments optional
@@ -175,16 +175,23 @@ def run(arguments):
             dataGenerator = loadShapes('data/task.txt')
         else:
             dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
-        if arguments.task:
-            suffix = "tools"
-        else:
-            suffix = f"{arguments.maxShapes}_shapes"
         testCSG(m,
                 dataGenerator,
                 arguments.timeout,
                 solvers=arguments.solvers,
                 timestamp=timestamp,
                 solverSeed=arguments.seed,
+                n_test=arguments.ntest)    
+    elif arguments.mode == "embed":
+        m = load_checkpoint(arguments.checkpoint)
+        if arguments.task:
+            # Test on shapes in participant task
+            dataGenerator = loadShapes('data/task.txt')
+        else:
+            dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
+        embedStims(m,
+                dataGenerator,
+                timestamp=timestamp,
                 n_test=arguments.ntest)    
 
 if __name__ == "__main__":

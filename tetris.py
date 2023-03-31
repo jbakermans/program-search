@@ -480,6 +480,70 @@ def testCSG(m, getProgram, timeout, timestamp, solvers, solverSeed=0, n_test=30)
                     defaultLoss=1.,
                     names=names,
                     export=f"{outputDirectory}/curve.png")
+    
+def embedStims(m, getProgram, timestamp, n_test=30):
+    oneParent = m.oneParent
+    print(f"One parent restriction?  {oneParent}")
+
+    outputDirectory = f"experimentOutputs/{timestamp}"
+    os.system(f"mkdir  -p {outputDirectory}")
+
+    if isinstance(getProgram, list):
+        specs = getProgram
+    else:
+        specs = [getProgram() for _ in range(n_test) ]
+    
+    embeddings = []
+    for ti,spec in enumerate(specs):
+        print("Embedding the program:")
+        print(ProgramGraph.fromRoot(spec, oneParent=oneParent).prettyPrint())
+        
+        plotShape(spec, "%s/%03d.png"%(outputDirectory,ti))
+        with open("%s/%03d_spec.pickle"%(outputDirectory,ti),"wb") as handle:
+            pickle.dump(spec, handle)
+            
+        # Collected from SMC.py > SMC > _infer, 
+        # pointerNetwork.py > ProgramPointerNetwork > repeatedlySample
+        
+        # specEncoding = m.specEncoder(spec.execute())
+        # objectEncodings = ScopeEncoding(m)
+        # objectsInScope = list(ProgramGraph([]).objects(oneParent=oneParent)) # initially: empty list
+        # oe = objectEncodings.encoding(spec, objectsInScope) # initially: None
+        # h0 = m.initialHidden(oe, specEncoding)        
+        
+        specEncoding = m.specEncoder(spec.execute())
+        h0 = m.initialHidden(None, specEncoding).detach().numpy()
+        np.save("%s/%03d_embed.npy"%(outputDirectory,ti), h0)
+        embeddings.append({'spec': str(spec), 'shape': spec.render(), 'embedding': h0})
+    # Collect results
+    all_embeddings = np.stack([e['embedding'] for e in embeddings])
+    # Save them in a single file
+    np.save(f"{outputDirectory}/all.npy", {
+        'spec':[e['spec'] for e in embeddings], 
+        'shape': [e['shape'] for e in embeddings], 
+        'embed': all_embeddings})
+    # Calculate embedding correlations: shape similarities
+    corrs = np.corrcoef(all_embeddings)
+    # Plot each spec and the shape similarities
+    f = plt.figure(figsize=(6,6))
+    gs = f.add_gridspec(len(embeddings)+1, len(embeddings)+1)
+    res = max([max(e['shape'].shape) for e in embeddings])
+    for e_i, e in enumerate(embeddings):
+        f.add_subplot(gs[e_i+1, 0])
+        #plt.subplot(len(embeddings)+1,len(embeddings)+1,(e_i+1)+1)
+        plt.imshow(padToFit(e['shape'],w=res,h=res), cmap='Greys', vmin=0, vmax=1)
+        plt.xticks([])
+        plt.yticks([])
+        #plt.subplot(len(embeddings)+1,len(embeddings)+1,(e_i+1)*(len(embeddings)+1) + 1)
+        f.add_subplot(gs[0, e_i+1])
+        plt.imshow(padToFit(e['shape'],w=res,h=res), cmap='Greys', vmin=0, vmax=1)
+        plt.xticks([])
+        plt.yticks([])        
+    f.add_subplot(gs[1:, 1:])
+    plt.xticks([])
+    plt.yticks([])            
+    plt.imshow(corrs)
+    plt.savefig(f"{outputDirectory}/similarity.png")
 
 def plotTestResults(testResults, timeout, defaultLoss=None,
                     names=None, export=None):
