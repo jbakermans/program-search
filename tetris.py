@@ -512,7 +512,10 @@ def embedStims(m, getProgram, timestamp, n_test=30):
         # h0 = m.initialHidden(oe, specEncoding)        
         
         specEncoding = m.specEncoder(spec.execute())
-        h0 = m.initialHidden(None, specEncoding).detach().numpy()
+        if m.use_cuda:
+            h0 = m.initialHidden(None, specEncoding).cpu().detach().numpy()
+        else:
+            h0 = m.initialHidden(None, specEncoding).detach().numpy()        
         np.save("%s/%03d_embed.npy"%(outputDirectory,ti), h0)
         embeddings.append({'spec': str(spec), 'shape': spec.render(), 'embedding': h0})
     # Collect results
