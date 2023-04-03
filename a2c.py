@@ -61,7 +61,8 @@ class A2C:
             #     print()
             # print("COMPARE\t",batchSuccess,oldSuccess)
                 
-            successes = [ [1.*int(R(spec, g)) for g in _g]
+            # JB: removed int around R to allow for continuous reward
+            successes = [ [1.*R(spec, g) for g in _g]
                           for spec,_g in zip(specs, gs) ]
 
             
@@ -77,7 +78,8 @@ class A2C:
                         g = ProgramGraph(trajectory[:t])
                         objects = g.objects(oneParent=self.model.oneParent)
                         oe = objectEncodings.encoding(spec, objects)
-                        valueTrainingTargets.append(float(int(succeeded)))
+                        #JB: removed int around float(succeeded) to allow for continuous reward
+                        valueTrainingTargets.append(float(succeeded))
                         distanceInput.append((specEncodings[si], oe))
 
             distancePredictions = self.model.batchedDistance([oe for se,oe in distanceInput],
@@ -101,7 +103,9 @@ class A2C:
                         ll = self.model.traceLogLikelihood(spec, trajectory,
                                                            scopeEncoding=objectEncodings,
                                                            specEncoding=specEncodings[si])[0]
-                        reinforcedLikelihoods.append(ll*(frequency/successfulTrajectories))
+                        # JB: multiply log likelihood by reward, i.e. successes[si][ti]
+                        reinforcedLikelihoods.append(successes[si][ti]
+                                                     *ll*(frequency/successfulTrajectories))
                 if successfulTrajectories == 0:
                     # mix imitation with REINFORCE
                     ll = self.model.traceLogLikelihood(spec, spec.toTrace(),
