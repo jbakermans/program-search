@@ -40,6 +40,8 @@ def get_arguments(mode=None, options=None):
                         help="Size of hidden layers")
     parser.add_argument("--timeout", default=5, type=float,
                         help="Test time maximum timeout")
+    parser.add_argument("--reward", choices=['full', 'partial', 'both'], 
+                        default='full', type=str)    
     parser.add_argument("--nudge", default=False, action='store_true')
     parser.add_argument("--oneParent", default=True, action='store_true')
     parser.add_argument("--noTranslate", default=True, action='store_true')
@@ -142,18 +144,35 @@ def run(arguments):
         assert arguments.resume is not None, "You need to specify a checkpoint with --resume, which bootstraps the policy"
         m = torch.load(arguments.resume)
         critic = A2C(m)
-        # JB: I want to only reward completely correct solutions
-        def R(spec, program):
-            if len(program) == 0 or len(program) > len(spec.toTrace()): return False
-            for o in program.objects():
-                if o.IoU(spec) == 1: return True
-            return False
+        # Implement different reward functions through reward argument
+        if arguments.reward == 'full':
+            # Only reward fully correct solutions
+            def R(spec, program):
+                if len(program) == 0: 
+                    return 0
+                else:
+                    return 1 * any([o.IoU(spec)==1 for o in program.objects()])
+        elif arguments.reward == 'partial':
+            # Reward the best partial program
+            def R(spec, program):
+                if len(program) == 0: 
+                    return 0
+                else:
+                    return max([o.IoU(spec) for o in program.objects()])
+        elif arguments.reward == 'both':
+            # Reward the best partial program; add bonus for being exactly right
+            def R(spec, program):
+                if len(program) == 0: 
+                    return 0
+                else:
+                    return 0.5 * max([o.IoU(spec) for o in program.objects()]) + \
+                        0.5 * any([o.IoU(spec)==1 for o in program.objects()])
         if arguments.td:
             training = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
         critic.train(arguments.checkpoint,
                      training,
                      R,
-                     trainTime=arguments.trainTime*60*60)
+                     trainTime=arguments.trainTime*60*60 if arguments.trainTime else None)
         
     elif arguments.mode == "heatMap":
         print('Heatmap not implemented')
