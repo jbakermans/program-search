@@ -5,6 +5,7 @@ from programGraph import *
 
 import torch.nn.functional as F
 import numpy as np
+import time
 
 
 class A2C:
@@ -13,7 +14,7 @@ class A2C:
         self.outerBatch = outerBatch
         self.innerBatch = innerBatch
 
-    def train(self, checkpoint, getSpec, R):
+    def train(self, checkpoint, getSpec, R, trainTime=None):
         fs = ForwardSample(self.model)
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, eps=1e-3, amsgrad=True)
@@ -22,8 +23,9 @@ class A2C:
         policy_losses = []
         lastUpdate = 0
         updateFrequency = 100
+        startTime = time.time()
         
-        while True:
+        while trainTime is None or time.time() - startTime < trainTime:
             specs = [getSpec() for _ in range(self.outerBatch) ]
 
             t0 = time.time()

@@ -152,7 +152,8 @@ def run(arguments):
             training = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
         critic.train(arguments.checkpoint,
                      training,
-                     R)
+                     R,
+                     trainTime=arguments.trainTime*60*60)
         
     elif arguments.mode == "heatMap":
         print('Heatmap not implemented')
