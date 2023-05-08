@@ -75,6 +75,10 @@ class SMC(Solver):
                         if newObject is None:
                             newKey = (p.trajectory, True)
                         else:
+                            # Here what I *could* do is calculate h0 as in repeatedlySample
+                            # Then add h0 as property to object, so that it specifies the hidden state
+                            # (and possibly also the iteration) as part of the full program tree
+                            # (This is what I am referring to at extend function in programGraph)
                             newKey = (tuple(list(p.trajectory) + [newObject]), False)
                             if newObject not in allObjects:
                                 newObjects.add(newObject)

@@ -60,6 +60,8 @@ class ProgramGraph:
         return "\n".join(lines)
                           
     def extend(self, newNode):
+        # This is a bit annoying because it's different from SMC, 
+        # where new objects is added to END instead of beginning
         return ProgramGraph([newNode] + list(self.nodes))
 
     def objects(self, oneParent=True):
