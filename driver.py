@@ -42,6 +42,7 @@ def get_arguments(mode=None, options=None):
                         help="Test time maximum timeout")
     parser.add_argument("--reward", choices=['full', 'partial', 'both'], 
                         default='full', type=str)    
+    parser.add_argument("--timestamp", default=None)    
     parser.add_argument("--nudge", default=False, action='store_true')
     parser.add_argument("--oneParent", default=True, action='store_true')
     parser.add_argument("--noTranslate", default=True, action='store_true')
@@ -65,7 +66,6 @@ def get_arguments(mode=None, options=None):
     return arguments
 
 def run(arguments):
-    timestamp = datetime.now().strftime('%FT%T')
     if arguments.render:
         for path in arguments.render:
             if path.endswith(".pickle") or path.endswith(".p"):
@@ -80,6 +80,9 @@ def run(arguments):
                         plotShape(program, f"tmp/render_{str(i)}.png")
         import sys
         sys.exit(0)                        
+
+    if arguments.timestamp is None:
+        arguments.timestamp = datetime.now().strftime('%FT%T')
 
     if arguments.mode == "demo":
         os.system("mkdir demo")
@@ -115,7 +118,7 @@ def run(arguments):
         if not arguments.td:
             if not arguments.rotate:
                 arguments.checkpoint += "_noRotate"
-        arguments.checkpoint += f"_{timestamp}.pickle"
+        arguments.checkpoint += f"_{arguments.timestamp}.pickle"
         print(f"Setting checkpointpath to {arguments.checkpoint}")
     if arguments.mode == "imitation":
         dsl = tDSL
@@ -168,7 +171,7 @@ def run(arguments):
                     return 0.5 * max([o.IoU(spec) for o in program.objects()]) + \
                         0.5 * any([o.IoU(spec)==1 for o in program.objects()])
         if arguments.td:
-            training = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
+            training = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=2)
         critic.train(arguments.checkpoint,
                      training,
                      R,
@@ -199,7 +202,7 @@ def run(arguments):
                 dataGenerator,
                 arguments.timeout,
                 solvers=arguments.solvers,
-                timestamp=timestamp,
+                timestamp=arguments.timestamp,
                 solverSeed=arguments.seed,
                 n_test=arguments.ntest)    
     elif arguments.mode == "embed":
@@ -208,16 +211,16 @@ def run(arguments):
             # Test on shapes in participant task
             dataGenerator = loadShapes('data/task.txt')
         else:
-            dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=arguments.maxShapes)
+            dataGenerator = lambda: randomScene(maxShapes=arguments.maxShapes, minShapes=2)
         embedStims(m,
                 dataGenerator,
-                timestamp=timestamp,
+                timestamp=arguments.timestamp,
                 n_test=arguments.ntest)    
 
 if __name__ == "__main__":
     arguments = get_arguments()  
     
     
-    #print(f"Invoking @ {timestamp} as:\n\tpython {' '.join(sys.argv)}")
+    #print(f"Invoking @ {arguments.timestamp} as:\n\tpython {' '.join(sys.argv)}")
 
     run(arguments)
