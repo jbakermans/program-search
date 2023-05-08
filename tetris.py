@@ -65,19 +65,19 @@ class Tetris(Program):
 
     def IoU(self, other):
         # Calculate 'Intersection over Union' between self and other object
-        if isinstance(other, Tetris): other = other.execute()
+        if isinstance(other, Tetris): other = 1.0*(other.render() > 0)
         # If one of the shapes can't be rendered: return 0 IoU
-        if other is None or self.execute() is None: 
+        if other is None or self.render() is None: 
             return 0
         else:
             # If any of the two shapes is just zeros everywhere: return 0 IoU
-            if np.all(other == 0) or np.all(self.execute() == 0):
+            if np.all(other == 0) or np.all(self.render() == 0):
                 return 0
         # Pad other by own size so they can be convolved
         other = np.pad(other,[[other.shape[0], other.shape[0]],
                               [other.shape[1], other.shape[1]]])
         # Make list of shapes; mirror other for convolution
-        shapes = [self.execute(), np.flipud(np.fliplr(other))]
+        shapes = [1.0*(self.render()>0), np.flipud(np.fliplr(other))]
         # Find number of pixels in both self AND other for all shifts
         both = convolve2d(shapes[0], shapes[1])
         # Find number of pixels in either self OR (= 1-AND) other for all shifts
@@ -86,6 +86,44 @@ class Tetris(Program):
         # Return the maximum ratio of both over either pixels
         return np.max(both[either>0] / either[either>0])
     
+    # def IoU(self, other):
+    #     # Calculate 'Intersection over Union' between self and other object
+    #     if isinstance(other, Tetris): other = 1.0*(other.render() > 0)
+    #     # If one of the shapes can't be rendered: return 0 IoU
+    #     if other is None or self.execute() is None: 
+    #         return 0
+    #     else:
+    #         # If any of the two shapes is just zeros everywhere: return 0 IoU
+    #         if np.all(other == 0) or np.all(self.execute() == 0):
+    #             return 0
+    #     # I'm going to shift shape 0, keep shape 1 at fixed location
+    #     shapes = [1.0*(self.render() > 0), other]
+    #     # Find horizontal and vertical range for shifting        
+    #     hor_range = [-shapes[0].shape[1] + 1, shapes[1].shape[1] - 1]
+    #     vert_range = [-shapes[0].shape[0] + 1, shapes[1].shape[0] - 1]
+    #     # Create empty canvas that fits all shifts
+    #     canvas = np.stack([np.zeros([vert_range[1] + shapes[1].shape[0] - vert_range[0], 
+    #                         hor_range[1] + shapes[1].shape[0] - hor_range[0]])
+    #                        for _ in shapes])
+    #     # Add fixed shape to fixed location on canvas
+    #     draw_area = canvas[1][-vert_range[0]:(-vert_range[0] + shapes[1].shape[0]), 
+    #                           -hor_range[0]:(-hor_range[0] + shapes[1].shape[1])]
+    #     # And colour in all values that are non-zero in the shape
+    #     draw_area[shapes[1] > 0] = shapes[1][shapes[1] > 0]
+    #     # Loop through all combinations and calculate intersection over union for each
+    #     IoU = 0;
+    #     for r in range(vert_range[1]-vert_range[0]):
+    #         for c in range(hor_range[1]-hor_range[0]):
+    #             # Add self to canvas at given location
+    #             draw_area = canvas[0][r:(r + shapes[0].shape[0]), 
+    #                                   c:(c + shapes[0].shape[1])]
+    #             draw_area[shapes[0] > 0] = shapes[0][shapes[0] > 0]
+    #             # Update IoU
+    #             IoU = max(IoU, np.sum(np.prod(canvas,axis=0))/np.sum(np.sum(canvas,axis=0)>0))
+    #             # Reset canvas
+    #             canvas[0] = np.zeros_like(canvas[0])
+    #     return IoU
+
     def render(self):
         # Render function will depend on operation; return None by default
         return None    
@@ -457,6 +495,7 @@ def testCSG(m, getProgram, timeout, timestamp, solvers, solverSeed=0, n_test=30)
             if len(testSequence) == 0:
                 testSequence = [SearchResult(ProgramGraph([]), 1., 0., 1)]
             testResults[n].append(testSequence)
+            import pdb; pdb.set_trace()
             for result in testSequence:
                 print(f"After time {result.time}, achieved loss {result.loss} w/")
                 print(result.program.prettyPrint())
