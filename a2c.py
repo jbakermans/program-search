@@ -112,6 +112,9 @@ class A2C:
                                                        scopeEncoding=objectEncodings,
                                                        specEncoding=specEncodings[si])[0]
                     reinforcedLikelihoods.append(ll)
+                    print('No successes, do imitation instead of REINFORCE')
+                else:
+                    print(f'{successfulTrajectories} successes, so rely on REINFORCE')
             if reinforcedLikelihoods:
                 policy_loss = -sum(reinforcedLikelihoods)/len(reinforcedLikelihoods)
             else:
@@ -132,30 +135,31 @@ class A2C:
                 print(f"Average value loss: {sum(value_losses)/len(value_losses)}")
                 if policy_losses:
                     print(f"Average policy loss: {sum(policy_losses)/len(policy_losses)}")
-                
+                print(f'Average reward: {np.mean(np.array(successes))}' )
                 policy_losses, value_losses = [], []
                 torch.save(self.model, checkpoint)
-
-                print("Live update of model predictions!")
-                k = 0
-                for si,spec in enumerate(specs):
-                    print(spec)
-                    print()
-
-                    for ti,trajectory in enumerate(trajectories[si]):
+                
+                if False:
+                    print("Live update of model predictions!")
+                    k = 0
+                    for si,spec in enumerate(specs):
+                        print(spec)
                         print()
-                        print(f"TRAJECTORY #{ti}: Success? {valueTrainingTargets[k]}")
-                        for t in range(len(trajectory) + 1):
-                            
-                            if t == 0:
-                                print(f"Prior to any actions, predicted distance is {distancePredictions[k]}")
-                            else:
-                                print(f"After taking action {trajectory[t - 1]}\t\t{distancePredictions[k]}\tadvantage {math.exp(-distancePredictions[k]) - math.exp(-distancePredictions[k - 1])}")
-
-                            k += 1
-
-                    print()
-
-                assert k == len(valueTrainingTargets)
+    
+                        for ti,trajectory in enumerate(trajectories[si]):
+                            print()
+                            print(f"TRAJECTORY #{ti}: Success? {valueTrainingTargets[k]}")
+                            for t in range(len(trajectory) + 1):
+                                
+                                if t == 0:
+                                    print(f"Prior to any actions, predicted distance is {distancePredictions[k]}")
+                                else:
+                                    print(f"After taking action {trajectory[t - 1]}\t\t{distancePredictions[k]}\tadvantage {math.exp(-distancePredictions[k]) - math.exp(-distancePredictions[k - 1])}")
+    
+                                k += 1
+    
+                        print()
+    
+                    assert k == len(valueTrainingTargets)
                     
                     
